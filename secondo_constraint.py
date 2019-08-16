@@ -20,14 +20,14 @@ import numpy as np
 import glob
 import os.path as path
 
-working_dir = '/Users/aklimase/Desktop/USGS/project/test_codes'
+working_dir =  '/home/eking/Documents/internship/data/events/SNR_10'
 
 #fill in constraint event
-secondo_dir = 'Andrews_inversion'
+secondo_dir = 'Andrews_inversion_np'
 #fill in constraint event name here
-constraint ='2010_01_20_11_51_46'
+constraint ='2010_12_09_22_02_08'
 constraint_file =  working_dir + '/constraint_' + constraint + '.out'
-outfile_path = working_dir + '/Andrews_inversion_constrained'
+outfile_path = working_dir + '/Andrews_inversion_constrained_np'
 
 con = np.genfromtxt(constraint_file)
 cf_spec = con.T[1] #second col
@@ -46,7 +46,7 @@ for i in range(len(secondo_ev)):#for each event
     outfile = open(outfile_path + '/' + eventid + '.out', 'w')
     out = (np.array([freq_list, amp, std])).T
     outfile.write('#freq_bins \t vel_spec_NE_m \t stdev_m \n')
-
+    np.savetxt(outfile, out, fmt=['%E', '%E', '%E'], delimiter='\t')
     outfile.close()
     
     

@@ -22,16 +22,17 @@ import os
 import os.path as path
 import glob
 import numpy as np
+
 from spec_func import bin_spec
 from spec_func import bin_max_err
 import time
 
 #working directory here
-working_dir = '/Users/aklimase/Desktop/USGS/project/test_codes'
+working_dir = '/home/eking/Documents/internship/data/events/SNR_2'
 
 #path to corrected seismograms
-event_dirs = glob.glob(working_dir + '/corrected/Event_*')
-outpath = working_dir + '/record_spectra'
+event_dirs = glob.glob(working_dir + '/cutWF/Event_*')
+outpath = working_dir + '/cut_record_spectra'
 
 #sampling rate
 delta = 0.01
@@ -44,21 +45,22 @@ for i in range(len(event_dirs)):
 for i in range(len(events)):
     if not path.exists(outpath + '/' + events[i]):
         os.makedirs(outpath + '/'  + events[i])
-
+#%%
 for i in range(len(event_dirs)):
     t1 = time.time()
     event = events[i][6:]
-    print i
-    print 'binning and fft of event: '+ event
-    recordpaths = glob.glob(working_dir + '/corrected/Event_' + event +'/*_*_HHN*.SAC')#full path for only specified channel
+    print(i)
+    print('binning and fft of event: '+ event)
+    recordpaths = glob.glob(working_dir + '/cutWF/Event_' + event +'/*_*_HHN_' + event + '.sac')#full path for only specified channel
     stns = [(x.split('/')[-1]).split('_')[1] for x in recordpaths]
+    print(stns)
     for j in range(len(stns)):
-        recordpath_E = glob.glob(working_dir + '/corrected/Event_' + event +'/*_' + stns[j] + '_HHE*.SAC')
-        recordpath_N = glob.glob(working_dir + '/corrected/Event_' + event +'/*_' + stns[j] + '_HHN*.SAC')
+        recordpath_E = glob.glob(working_dir + '/cutWF/Event_' + event +'/*_' + stns[j] + '_HHE_' + event + '.sac')
+        recordpath_N = glob.glob(working_dir + '/cutWF/Event_' + event +'/*_' + stns[j] + '_HHN_' + event + '.sac')
         if(len(recordpath_E) == 1 and len(recordpath_N) == 1):
             #North component
-            base_N = path.basename(recordpath_E[0])
-            base_E = path.basename(recordpath_N[0])
+            base_N = path.basename(recordpath_N[0])
+            base_E = path.basename(recordpath_E[0])
     
             network = base_N.split('_')[0]
             station = base_N.split('_')[1]
@@ -71,6 +73,7 @@ for i in range(len(event_dirs)):
             
             spec_amp, freq , jack, fstat, dof =  mtspec(data, delta = delta, time_bandwidth = 4, number_of_tapers=7, quadratic = True, statistics = True)
 			#find standard deviation
+           
             sigmaN = (jack[:,1] - jack[:,0])/3.29
             #power spectra
             spec_array_N = np.array(spec_amp)
@@ -100,12 +103,15 @@ for i in range(len(event_dirs)):
                 
                 #0.1-end
                 bins, binned_data = bin_spec(data_NE[6:-1], freq[6:-1], num_bins = 75)
+                if (bins.all() == 0) & (binned_data.all() == 0):
+                    continue
                 bins_sig, binned_sig = bin_max_err(sigma[6:-1], freq[6:-1], num_bins = 75)
-
+                if (bins_sig.all() == 0) & (binned_sig.all() == 0):
+                    continue
                 #make sure that all spec is a number
                 if (np.isnan(binned_data).any() == False):
                 ##write to file
-                    outfile = open(outpath + '/Event_'+ event + '/'+ network + '_' + station + '_' + 'HHNE' + '__' + event + '.out', 'w')
+                    outfile = open(outpath + '/Event_'+ event + '/'+ network + '_' + station + '_' + 'HHNE' + '_' + event + '.out', 'w')
                     data = np.array([bins, binned_data, binned_sig])
 #                    print(outpath + event)
                     data = data.T
@@ -113,5 +119,5 @@ for i in range(len(event_dirs)):
                     np.savetxt(outfile, data, fmt=['%E', '%E', '%E'], delimiter='\t')
                     outfile.close()
     t2 = time.time()
-    print 'time for event: (s)', (t2-t1)
+    print('time for event: (s)', (t2-t1))
         

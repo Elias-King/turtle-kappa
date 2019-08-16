@@ -1,21 +1,24 @@
 #!/usr/bin/env python2
 # -*- coding: utf-8 -*-
 """
+
+#!/usr/bin/env python2
+# -*- coding: utf-8 -*-
+
 Created on Mon Aug  7 09:53:15 2017
-
+​
 @author: Alexis Klimasewski
-
+​
 compute “B” for a M3 earthquake, and then for every ~M3 earthquake
 in your dataset (call it “A”), find A/B for every frequency range you inverted for.  
 Then sum up A/B over all frequency ranges and find which earthquake has the minimum value for that
 because then that would suggest that earthquake is closest to a brune spectrum
 """
-
 import glob
 import numpy as np
 import obspy
 import matplotlib.pyplot as plt
-
+import pandas as pd
 #magnitude range for inversion constraint
 mag_ub = 3.5#2.77
 mag_lb = 3.0#2.75
@@ -25,22 +28,21 @@ stressdrop = 5e6 #pascals
 U = 0.63#0.63
 rho = 2750. #kg/m^3
 
-working_dir =  '/Users/aklimase/Desktop/USGS/project/'
-event_spectra_dir = working_dir + '/test_codes/Andrews_inversion/'
+working_dir =  '/home/eking/Documents/internship/data/events/SNR_10'
+event_spectra_dir = working_dir + '/Andrews_inversion_np/'
 event_spectra = glob.glob(event_spectra_dir + '[2]*.out')
 
 writefile = 'yes'
-
 #find events in catalog that are in mag range
-catalog = working_dir + '/catalogs/all_paths_M2.5_USGS_Catalog.txt'
-cat = np.genfromtxt(catalog, comments = '#', delimiter = '|', dtype = None, usecols = [1,10], encoding = None)
+catalog = working_dir + '/SNR_10_file.csv'
+cat =pd.read_csv(catalog)
 event = []
 magl = []
 for i in range(len(cat)):
-    m = cat[i][1]
+    m = cat.loc[i]['Mag']
     if m >= mag_lb and m <= mag_ub:
-        magl.append(cat[i][1])
-        time = obspy.core.utcdatetime.UTCDateTime(cat[i][0].split('.')[0])
+        magl.append(cat.loc[i]['Mag'])
+        time = obspy.core.utcdatetime.UTCDateTime(cat.loc[i]['OrgT'].split('.')[0])
         ev = str(time.year).zfill(4) + '_' + str(time.month).zfill(2) + '_' + str(time.day).zfill(2) + '_' + str(time.hour).zfill(2) + '_' + str(time.minute).zfill(2) + '_' + str(time.second).zfill(2)
         event.append(ev)
        
@@ -50,7 +52,6 @@ cf2_list = []
 Brune_list = []
 spec_list = []
 ev_list = []
-
 spec_demean_list = []
 Brune_demean_list = []
 
@@ -59,7 +60,7 @@ Brune_demean_list_log = []
  
 for i in range(len(event)):
     f = event_spectra_dir + event[i] + '.out'
-    print f
+    print (f)
     if f in event_spectra:
         ev_list.append(event[i])
         data = np.genfromtxt(f, dtype = float, comments = '#', delimiter = None, usecols = (0,1))#only read in first two cols
@@ -81,7 +82,10 @@ for i in range(len(event)):
         #brune spectra over all frequencies
         Brune = (2.*np.pi*(freq)*omega0)/(1.+((1./fc)*freq)**2.)
         #stay in meters
-        cf_list.append(np.log10(spec)-np.log10(Brune))
+        shift1 = np.mean(Brune[27:70])
+        shift2 = np.mean(spec[27:70])
+        
+        cf_list.append(np.log10(spec/shift2)-np.log10(Brune/shift1))
 
         Brune_list.append(Brune)
         spec_list.append(spec)
@@ -90,14 +94,15 @@ for i in range(len(event)):
 #sum up all A/B over freqencies we are fitting
 cfarray = np.array(cf_list)
 #ind = cfarray.index(0.5)
-sum_list = map(sum,cfarray[:,np.arange(27,70)]**2.0) ###found the best fit from 1-32.7Hz
+
+sum_list = list(map(sum,cfarray[:,np.arange(27,70)]**2.0))###found the best fit from 1-32.7Hz
 
 ##find the minimum in log space
 ind = sum_list.index(min(sum_list))
 print(ev_list[ind])
 print(min(sum_list))        
 
-print magl[ind]
+print (magl[ind])
 fig = plt.figure(figsize = (12,10))
 plt.ylabel('Velocity amplitude (m)', fontsize = 16)
 plt.xlim(0.5,70)
@@ -116,9 +121,8 @@ plt.show()
 
 #write the constraint file in linear space to agree with the event and station spectra
 if writefile == 'yes':
-    outfile = open(working_dir + 'test_codes/constraint_' + ev_list[ind] + '.out', 'w')
+    outfile = open(working_dir + '/constraint_' + ev_list[ind] + '.out', 'w')
     out = (np.array([freq, (10.**(cf_list[ind]))]).T)
     outfile.write('#freq_bins \t cf_m \n')
     np.savetxt(outfile, out, fmt=['%E', '%E'], delimiter='\t')
     outfile.close()
-

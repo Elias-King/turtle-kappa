@@ -80,7 +80,8 @@ def bin_spec(data, frequency, num_bins):
     import numpy as np
 #    import matplotlib.pyplot as plt
     #takes in linear frequency and NE velocity spectra (not power!)
-
+    if len(frequency) == 0:
+        return np.zeros((1,1)),np.zeros((1,1))
     fstart = frequency[0]#1
     if fstart == 0:
         fstart = frequency[1]
@@ -124,7 +125,8 @@ def bin_max_err(data, frequency, num_bins):
     import numpy as np
 #    import matplotlib.pyplot as plt
     #takes in linear frequency and NE velocity spectra (not power!)
-
+    if len(frequency) == 0:
+        return np.zeros((1,1)),np.zeros((1,1))
     fstart = frequency[0]#1
     if fstart == 0:
         fstart = frequency[1]

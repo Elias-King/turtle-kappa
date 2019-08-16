@@ -20,23 +20,29 @@ import os.path as path
 import numpy as np
 import obspy
 from obspy import read    
-import dread
+#import dread
 import time
 import random
-
+import pandas as pd
+from scipy import linalg
 
 #read in the cut and corrected spectra = records
 #records are in m/s
 #should be binned frequencies and amplitudes
 #make list of records and the corresponding events and stations
-working_dir = '/Users/aklimase/Desktop/USGS/project/test_codes'
+#working_dir = '/home/eking/Documents/internship/data/events/SNR_5'
+working_dir = '/home/eking/Documents/internship/data/events/SNR_10'
 outfile_path = working_dir + '/Andrews_inversion'
 
 #list of record files
-ev = glob.glob(working_dir + '/record_spectra/Event*/*')
-
+#ev = glob.glob(working_dir + '/cut_record_spectra/Event*/*')
+ev = glob.glob(working_dir + '/cut_record_spectra/Event*/*')
+#flatfile =  pd.read_csv(working_dir + '/SNR_5_file.csv')
+flatfile =  pd.read_csv(working_dir + '/SNR_10_file.csv')
+flatfile = flatfile.drop_duplicates(subset = ['OrgT', 'Name'])
+print(len(flatfile))
 def secondo(record_path, out_file_path):
-    print 'Number of records: ', len(record_path)
+    print('Number of records: ', len(record_path))
     #read in all files to find networks and stations
     stationlist = []
     stn_lat = []
@@ -48,7 +54,7 @@ def secondo(record_path, out_file_path):
     record_freq = []
     record_spec = []
     record_std = []
-    
+    numrec = 0
     ##############################################################################
     ## read in the uncut sac files and get the distances between source and station
     
@@ -58,33 +64,45 @@ def secondo(record_path, out_file_path):
     for i in range(len(record_path)):
         record = (record_path[i].split('/')[-1])
         base = path.basename(record)
-        network, station, channel, loc = base.split('_')[0:4]
-        yyyy, month, day, hh, mm, ss = base.split('_')[4:]
+        print(base)
+        network, station, channel= base.split('_')[0:3]
+        yyyy, month, day, hh, mm, ss = base.split('_')[3:]
         ss = ss.split('.')[0]
         eventid = yyyy + '_' + month + '_' + day + '_' + hh + '_' + mm + '_' + ss
+        orgt = yyyy + '-' + month + '-' + day + ' ' + hh + ':' + mm + ':' + ss
         
         #read in uncorrected data for header info
-        raw_file = working_dir + '/corrected/Event_'+ eventid + '/' + network + '_' + station + '_HHN_' + loc + '_' + eventid + '.SAC'
-        stream = read(raw_file)
-        tr = stream[0]
+        #tr = flatfile.loc[np.where(orgt == flatfile['OrgT']) & np.where(station == flatfile['Name'])]
+        tr = flatfile.loc[((orgt == flatfile['OrgT']) & (station == flatfile['Name']))]
         
-        evlon =  tr.stats.sac.evlo #deg
-        evlat =  tr.stats.sac.evla #deg
-        evdepth = tr.stats.sac.evdp #km
-        stlon = tr.stats.sac.stlo #deg
-        stlat = tr.stats.sac.stla #deg
-        stdepth = tr.stats.sac.stdp #km
         
+        print(tr)
+        evlon =  tr['Qlon'] #deg
+        evlat =  tr['Qlat'] #deg
+        evdepth = tr['Qdep'] #km
+        stlon = tr['Slon'] #deg
+        stlat = tr['Slat'] #deg
+        stdepth = tr['Selv'] #km
+        evdepth = evdepth/1000
         #find distance between event and station
-        dist =  dread.compute_rrup(evlon, evlat, evdepth, stlon, stlat, stdepth) #in km
+        #dist =  dread.compute_rrup(evlon, evlat, evdepth, stlon, stlat, stdepth) #in km
         #km to m
-        dist = dist*1000.
-    
+        dist = tr['rhyp']
+        dist = dist * 1000.
+        try:
+            dist = float(dist)
+        except:
+            dist = np.mean(flatfile['rhyp'])
+        
         #read in file
         data = np.genfromtxt(record_path[i], dtype = float, comments = '#', delimiter = None, usecols = (0,1,2))#only read in first two cols
+        if len(data) == 0:
+            continue
         record_freq.append(data[:,0])##
         #data is NE spectra
         #square for power spectra
+        print(data)
+        print(dist)
         ###########################################################################
         #propagation here for errors going lin to log power
         record_spec.append((data[:,1]*dist)**2.)
@@ -103,41 +121,43 @@ def secondo(record_path, out_file_path):
             
     t2 = time.time()
     
-    print 'time to read and distance correct all records: ', (t2-t1)/60.
-    print len(record_freq)
-    print len(record_spec)
+    print ('time to read and distance correct all records: ', (t2-t1)/60.)
+    print (len(record_freq))
+    print (len(record_spec))
 
     freq_list = record_freq[0]
     print(freq_list)
     F_bins = len(freq_list)
     print(F_bins)
     
-    rows = len(record_path) #testing first 10
+    rows = len(record_freq) #testing first 10
     print(rows)
     
     index_matrix = [[0 for j in range(3)] for i in range(rows)]
     
     #for i in range(len(records)):
-    for i in range(rows):
+    for i in range(len(record_spec)):
         record = record_path[i].split('/')[-1]
         base = path.basename(record)
-        network, station, channel, loc = base.split('_')[0:4]
-        yyyy, month, day, hh, mm, ss = base.split('_')[4:]
+        network, station, channel = base.split('_')[0:3]
+        yyyy, month, day, hh, mm, ss = base.split('_')[3:]
         ss = ss.split('.')[0]
         eventid = yyyy + '_' + month + '_' + day + '_' + hh + '_' + mm + '_' + ss
         #make a tuple of record, event, station so indices can be assigned
         index_matrix[i] = [base, eventidlist.index(eventid), stationlist.index(station)]
-    
+        
+        
+    numrec += 1
     print(eventidlist[0])
     print(stationlist)
     
     I = len(eventidlist)#events
     J = len(stationlist)#stations
-    K = len(record_path)#records
-    K = rows
+    #K = len(record_path)#records
+    K = len(record_spec)
     
-    print 'Number of events: ', I, ' Number of stations: ', J
-    print 'Number of rows (records): ', K, ' Number of cols (events+stations): ', I+J
+    print ('Number of events: ', I, ' Number of stations: ', J)
+    print ('Number of rows (records): ', K, ' Number of cols (events+stations): ', I+J)
     
     #make the G matrix of 1s and 0s and R matrix of records
     G1 = np.zeros((K,I))
@@ -172,15 +192,21 @@ def secondo(record_path, out_file_path):
         t1 = time.time()
         d = R[:,f]#record for given frequency col
         dT = d.T
-        print 'inverting for frequency: ', f, freq_list[f]
-        G_inv = np.linalg.pinv(G, rcond=1e-13)
+        print ('inverting for frequency: ', f, freq_list[f])
+        
+        ## Inverting - previous version used numpy linalg pinv, which uses 
+        ##   the SVD to get the moore-penrose pseudoinverse. This seems unstable
+        ##   often, not sure why... SVD won't converge.
+        #G_inv = np.linalg.pinv(G, rcond=1e-13)
+        ## VJS added this - scipy linalg pinv which just does a least squares solver.
+        G_inv = linalg.pinv(G, rcond=1e-13)
         covd = np.diag(cov[:,f])
 
         covm = np.dot((np.dot(G_inv, covd)), G_inv.T)
         m1[:,f] = np.dot(G_inv,dT)
         m_cov[:,f]= covm.diagonal()
         t2 = time.time()
-        print 'time for inversion: (min) ', round((t2-t1)/60., 4)
+        print ('time for inversion: (min) ', round((t2-t1)/60., 4))
     
     
     print(m1.shape)
@@ -205,7 +231,7 @@ def secondo(record_path, out_file_path):
         outfile.close()
 
 
-    print outfile_path
+    print (outfile_path)
     for i in range(J):#for each station
         amp = np.sqrt(np.power(10.0, station[i,:]))
 
@@ -220,3 +246,4 @@ def secondo(record_path, out_file_path):
 
 
 secondo(record_path = ev, out_file_path = outfile_path)
+#%%
